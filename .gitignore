@@ -2,9 +2,10 @@
 __pycache__/
 *.py[cod]
 *$py.class
-*.log
 folder-structure.txt
-*.db
+db/tasks.db
+task_manager.log
+env/
 
 # C extensions
 *.so
