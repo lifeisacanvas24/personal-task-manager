@@ -43,35 +43,50 @@ def init_db():
         conn.close()
 
 # Add a new task to the database
+# Add a new task to the database
 def add_task(title, description, category, priority, status, due_date, time, parent_id=0, recurrence="none", dependencies="[]"):
-    conn = sqlite3.connect('db/tasks.db')
-    cursor = conn.cursor()
-
-    # Calculate the initial next occurrence based on recurrence interval
-    next_occurrence = None
-    if recurrence != "none" and due_date:
-        current_date = datetime.strptime(due_date, "%Y-%m-%d")
-        next_occurrence = calculate_next_occurrence(recurrence, current_date)
-
-    cursor.execute('''INSERT INTO tasks (title, description, category, priority, status, due_date, time, parent_id, recurrence, next_occurrence, dependencies)
-                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                   (title, description, category, priority, status, due_date, time, parent_id, recurrence, next_occurrence, dependencies))
-    conn.commit()
-    conn.close()
-
-# Fetch a task by ID
-def fetch_task(task_id):
     try:
         conn = sqlite3.connect('db/tasks.db')
         cursor = conn.cursor()
-        cursor.execute('SELECT * FROM tasks WHERE id = ?', (task_id,))
-        task = cursor.fetchone()
+
+        # Calculate the initial next occurrence based on recurrence interval
+        next_occurrence = None
+        if recurrence != "none" and due_date:
+            current_date = datetime.strptime(due_date, "%Y-%m-%d")
+            next_occurrence = calculate_next_occurrence(recurrence, current_date)
+
+        # Insert the task into the database
+        cursor.execute('''INSERT INTO tasks (title, description, category, priority, status, due_date, time, parent_id, recurrence, next_occurrence, dependencies)
+                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                       (title, description, category, priority, status, due_date, time, parent_id, recurrence, next_occurrence, dependencies))
+        conn.commit()
+
+        # Fetch and return the last inserted task ID
+        task_id = cursor.lastrowid
+        return task_id
     except sqlite3.Error as e:
-        print(f"Error fetching task: {e}")
-        task = None
+        print(f"Error adding task: {e}")
+        logging.error("Error adding task: %s", e)
+        return None
     finally:
         conn.close()
-    return task
+
+# Fetch a task by ID
+def fetch_task(task_id):
+    conn = sqlite3.connect('db/tasks.db')
+    cursor = conn.cursor()
+
+    # Fetch the task as a tuple
+    cursor.execute('SELECT * FROM tasks WHERE id = ?', (task_id,))
+    task_tuple = cursor.fetchone()
+    conn.close()
+
+    if task_tuple:
+        # Convert the tuple to a dictionary for easier access
+        columns = ["id", "title", "description", "category", "priority", "status", "due_date", "time", "parent_id", "recurrence", "next_occurrence", "dependencies"]
+        task = dict(zip(columns, task_tuple))
+        return task
+    return None
 
 # Update task details
 def update_task(task_id: int, updates: dict) -> None:
@@ -119,40 +134,78 @@ def delete_task(task_id):
         conn.close()
 
 # List tasks with optional sorting
-def list_tasks(sort_by=None):
+# List tasks with optional filtering and sorting
+def list_tasks(filters=None, sort_by=None):
+    """Fetch tasks from the database with optional filters and sorting.
+
+    :param filters: A dictionary of filters (e.g., {"parent_id": 2, "status": "To Do"})
+    :param sort_by: A comma-separated string of fields to sort by (e.g., "due-date,priority")
+    :return: A list of tasks matching the criteria
+    """
     try:
         conn = sqlite3.connect('db/tasks.db')
         cursor = conn.cursor()
 
+        # Base query
         query = "SELECT * FROM tasks"
-        if sort_by:
-            query += f" ORDER BY {sort_by}"
+        conditions = []
+        values = []
 
-        cursor.execute(query)
+        # Apply filters
+        if filters:
+            if "task_title" in filters:
+                conditions.append("title LIKE ?")
+                values.append(filters["task_title"].replace("*", "%"))  # Support wildcards
+            if "parent_id" in filters:
+                conditions.append("parent_id = ?")
+                values.append(filters["parent_id"])
+            if "status" in filters:
+                conditions.append("status = ?")
+                values.append(filters["status"])
+            if "priority" in filters:
+                conditions.append("priority = ?")
+                values.append(filters["priority"])
+            if "category" in filters:
+                conditions.append("category = ?")
+                values.append(filters["category"])
+
+        # Add conditions to query
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        # Apply sorting
+        if sort_by:
+            sort_fields = ", ".join(sort_by.split(","))
+            query += f" ORDER BY {sort_fields}"
+
+        # Execute the query
+        cursor.execute(query, tuple(values))
         tasks = cursor.fetchall()
 
         # Convert tuples to dictionaries
         task_list = []
         for task in tasks:
             task_dict = {
-                'id': task[0],
-                'title': task[1],
-                'description': task[2],
-                'category': task[3],
-                'priority': task[4],
-                'status': task[5],
-                'due_date': task[6],
-                'time': task[7],
-                'parent_id': task[8],
-                'recurrence': task[9],
-                'next_occurrence': task[10],
-                'dependencies': task[11]
+                "id": task[0],
+                "title": task[1],
+                "description": task[2],
+                "category": task[3],
+                "priority": task[4],
+                "status": task[5],
+                "due_date": task[6],
+                "time": task[7],
+                "parent_id": task[8],
+                "recurrence": task[9],
+                "next_occurrence": task[10],
+                "dependencies": task[11]
             }
             task_list.append(task_dict)
 
         return task_list
+
     except sqlite3.Error as e:
         print(f"Error listing tasks: {e}")
+        return []
     finally:
         conn.close()
 

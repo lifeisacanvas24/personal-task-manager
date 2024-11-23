@@ -6,6 +6,8 @@ folder-structure.txt
 db/tasks.db
 task_manager.log
 env/
+create-tasks.py
+job-consultncy-region-specific.json
 
 # C extensions
 *.so
